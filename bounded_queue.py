@@ -1,6 +1,7 @@
 from collections import deque
 import threading
 from typing import List
+
 show_data_lock: threading.Lock = threading.Lock()
 
 
@@ -31,6 +32,7 @@ class ThreadSafeBoundedQueue(BaseThreadSafeBoundedQueue):
     """
     Thread-safe bounded queue which removes the oldest element when full.
     """
+
     def put(self, item):
         with self.lock:
             if len(self.active_queue) == self.capacity:
@@ -50,11 +52,13 @@ class ThreadSafeBoundedQueueNoOverflow(BaseThreadSafeBoundedQueue):
     """
     Thread-safe bounded queue that does not add new items if the queue is full.
     """
+
     def put(self, item):
         with self.lock:
             if len(self.active_queue) < self.capacity:
                 self.active_queue.append(item)
             # If the queue is full, do nothing.
+
     def get_and_clear_all(self) -> deque:
         with self.get_clear_lock:
             with self.lock:

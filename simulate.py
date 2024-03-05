@@ -1,3 +1,4 @@
+import threading
 import time
 import typing
 
@@ -10,8 +11,10 @@ from message_pb2 import Message
 from bounded_queue import BaseThreadSafeBoundedQueue, ThreadSafeBoundedQueue
 from typing import Tuple, Generator, Union, List, Dict, Optional, Iterable
 from my_enum import SensorEnum, DiscardPolicy
-from utils import singleton_factory
+from utils import singleton_factory, compositing_video_through_ffmpeg, init_env
 import functools
+import matplotlib.pyplot as plt
+import numpy as np
 
 # 单位 byte
 HTTP2_FRAME_HEADER_SIZE = 9
@@ -33,6 +36,58 @@ STM32_CONTROLLER_RESOURCE: Optional[Resource] = None
 
 ENV: Optional[simpy.Environment] = None
 
+GLOBAL_CURRENT_SENSOR_DATA: Dict[str, Iterable[float]] = {
+
+}
+IMAGE_RANGE = [SensorEnum.ACCELEROMETER,
+               SensorEnum.GYROSCOPE,
+               SensorEnum.HUMIDITY,
+               SensorEnum.TEMPERATURE,
+               SensorEnum.MAGNETOMETER,
+               SensorEnum.PRESSURE]
+FUNC_NAME_OP_NAME_DICT: Dict[str, str] = {
+    "_generate_random_datum": "sensor generates data",
+    "poll_data": "controller polls data "
+}
+draw_image_lock: threading.Lock = threading.Lock()
+
+
+# @synchronized(draw_image_lock)
+def draw_image(func_name: str, env_time: Union[int, float], called_sensor: SensorEnum):
+    if len(GLOBAL_CURRENT_SENSOR_DATA) != 6:
+        print(f"there is not enough sensor data to draw")
+        return
+    fig, axs = plt.subplots(2, 3, figsize=(15, 10))  # 创建两行三列的子图
+    fig.suptitle(f"Sensor:{called_sensor.name} | {FUNC_NAME_OP_NAME_DICT[func_name]} ", fontsize=16)
+    for index, ax in enumerate(axs.flat):
+        sensor_type: SensorEnum = IMAGE_RANGE[index]
+        sensor_data = GLOBAL_CURRENT_SENSOR_DATA.get(sensor_type.name)
+        ax.set_title(f"Sensor: {sensor_type.name}")
+        ax.set_ylabel(f"Unit {sensor_type.unit}")
+        max_data_points = max(len(data) for data in GLOBAL_CURRENT_SENSOR_DATA.values() if data is not None)
+        if sensor_data is None:
+            ax.text(0.5, 0.5, "No data available", transform=ax.transAxes, ha='center', va='center')
+            continue
+        print(f"sensor_data:{sensor_data}")
+        ax.plot(sensor_data, marker='o', linestyle='', markersize=8)  # 绘制传感器数据
+        ax.set_xticks(range(0, max_data_points))
+        if max_data_points == 1:
+            ax.set_xlim(-1, 1)  # 为单个数据点设置更宽的范围
+        else:
+            ax.set_xlim(-0.5, max_data_points - 0.5)  # 检查是否有超过1的数据，并相应地标记
+        bottom = sensor_type.mini_threshold
+        top = sensor_type.max_threshold
+        ax.axhline(bottom, color='red', linestyle='--')  # 添加红色水平线表示阈值
+        ax.axhline(top, color='red', linestyle='--')  # 添加红色水平线表示阈值
+        if any(value > top or value < bottom for value in sensor_data):
+            # ax.axhline(bottom, color='red', linestyle='--')  # 添加红色水平线表示阈值
+            # ax.axhline(top, color='red', linestyle='--')  # 添加红色水平线表示阈值
+            ax.text(0.5, 0.9, "URGENT", transform=ax.transAxes, color='red', fontsize=12,
+                    ha='center')
+    plt.tight_layout()
+    plt.savefig(f'images/{env_time}-{time.time()}-{called_sensor.name}-{FUNC_NAME_OP_NAME_DICT[func_name]}.png')
+    plt.close(fig)
+
 
 def print_queue(func):
     """A decorator that prints the queue after the function call."""
@@ -40,12 +95,19 @@ def print_queue(func):
     @functools.wraps(func)
     def wrapper(self, *args, **kwargs):
         result = func(self, *args, **kwargs)  # Call the original function/method
-        time = ENV.now
+        simpy_time = ENV.now
         method_name = func.__name__  # 获取当前执行的方法名
-        # print(f"Method Name: {method_name}")  # 打印方法名
-        if not (isinstance(result,float) or isinstance(result, int)):
-            print(f"type of result:{type(result)}")
-        # print("Current Queue:", self.queue.active_queue)  # Print the queue
+        print(f"Method Name: {method_name}")  # 打印方法名
+        display_result = result
+        if isinstance(display_result, float) or isinstance(display_result, int):
+            display_result = list(self.queue.active_queue) if len(self.queue.active_queue) != 0 else []
+        sensor_type: SensorEnum = self.sensor_enum
+        with draw_image_lock:
+            global GLOBAL_CURRENT_SENSOR_DATA
+            print(f"typeof result:{type(display_result)}")
+            print(f"result:{display_result}")
+            GLOBAL_CURRENT_SENSOR_DATA[sensor_type.name] = display_result
+            draw_image(func_name=method_name, env_time=simpy_time, called_sensor=sensor_type)
         return result
 
     return wrapper
@@ -67,6 +129,7 @@ class Sensor:
         while True:
             self.queue.put(item=self._generate_random_datum())
             yield self.env.timeout(delay=self.interval)
+
     @print_queue
     def _generate_random_datum(self) -> float:
         bottom, top = self.sensor_enum.range_tuple
@@ -74,6 +137,7 @@ class Sensor:
         error: float = random.uniform(a=-0.05, b=0.05)
         data *= (1 + error)
         data = max(bottom, min(data, top))
+        print(data)
         return data
 
     @print_queue
@@ -168,6 +232,7 @@ def stm32_controller_process(env: simpy.Environment) -> Generator[simpy.Event, N
 
 
 def main():
+    init_env()
     env = simpy.Environment()
     global ENV
     ENV = env
@@ -184,6 +249,7 @@ def main():
         env.process(tem_sensor.generate_data())
     env.process(stm32_controller_process(env=env))
     env.run(until=20)  # Simulate for 10 seconds
+    compositing_video_through_ffmpeg()
 
 
 def test():

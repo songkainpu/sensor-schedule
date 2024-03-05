@@ -31,21 +31,21 @@ class SensorEnum(Enum):
     # Major cycle is 2 second
     #
     # range unit mg
-    ACCELEROMETER = (52, 0.05, (-2, 2), -1.9, 1.9, 52, 80.25)
+    ACCELEROMETER = (52, 0.05, (-2, 2), -1.9, 1.9, 52, 80.25, "ml")
     # range unit dps
-    GYROSCOPE = (52, 0.05, (-60, 60), -50, 50, 52, 80.25)
+    GYROSCOPE = (52, 0.05, (-60, 60), -50, 50, 52, 80.25, "ml")
     # range unit rH%
-    HUMIDITY = (1, 0.05, (30, 70), 40, 60, 2, 74.96875)
+    HUMIDITY = (1, 0.05, (30, 70), 40, 60, 2, 74.96875, "ml")
     # range unit Celsius
-    TEMPERATURE = (1, 0.05, (15, 30), 20, 25, 2, 74.96875)
+    TEMPERATURE = (1, 0.05, (15, 30), 20, 25, 2, 74.96875, "ml")
     # range unit Gauss
-    MAGNETOMETER = (40, 0.05, (0, 100), 5, 95, 40, 78.75)
+    MAGNETOMETER = (40, 0.05, (0, 100), 5, 95, 40, 78.75, "ml")
     # range unit hPa
-    PRESSURE = (25, 0.05, (0, 100000), 5, 99995, 25, 76.84375)
+    PRESSURE = (25, 0.05, (0, 100000), 5, 99995, 25, 76.84375, "ml")
 
     def __init__(self, rate: float, error: float, range_tuple: Tuple[float, float],
                  mini_threshold: Union[int, float], max_threshold: Union[int, float], data_capacity: int,
-                 expected_cost: float):
+                 expected_cost: float, unit:str):
         """
         :param rate: unitL Hz
         :param error:  unit 1
@@ -53,6 +53,8 @@ class SensorEnum(Enum):
         :param mini_threshold
         :param max_threshold
         :param data_capacity unit ms
+        :param expected_cost:
+        :param unit:
         """
         self.rate = rate
         self.error = error
@@ -61,6 +63,7 @@ class SensorEnum(Enum):
         self.max_threshold = max_threshold
         self.data_capacity = data_capacity
         self.expected_cost = expected_cost
+        self.unit = unit
 
 class DiscardPolicy(Enum):
     """
