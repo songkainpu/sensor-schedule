@@ -1,8 +1,7 @@
 from collections import deque
-import threading
 from typing import List
+from fair_lock import FairLock
 
-show_data_lock: threading.Lock = threading.Lock()
 
 
 class BaseThreadSafeBoundedQueue:
@@ -14,8 +13,8 @@ class BaseThreadSafeBoundedQueue:
         self.capacity = capacity
         self.active_queue = deque(maxlen=capacity)
         self.back_up_queue = deque(maxlen=capacity)
-        self.lock = threading.Lock()
-        self.get_clear_lock = threading.Lock()
+        self.lock = FairLock()
+        self.get_clear_lock = FairLock()
         self.is_over_flow:bool = False
 
     def put(self, item):
