@@ -11,7 +11,7 @@ from message_pb2 import Message
 from bounded_queue import BaseThreadSafeBoundedQueue, ThreadSafeBoundedQueue
 from typing import Tuple, Generator, Union, List, Dict, Optional, Iterable
 from my_enum import SensorEnum, DiscardPolicy
-from utils import singleton_factory, compositing_video_through_ffmpeg, init_env
+from utils import singleton_factory, compositing_video_through_ffmpeg, init_env, ensure_directory_exists
 import functools
 import matplotlib.pyplot as plt
 from fair_lock import FairLock
@@ -50,10 +50,11 @@ FUNC_NAME_OP_NAME_DICT: Dict[str, str] = {
     "_generate_random_datum": "sensor generates data",
     "poll_data": "controller polls data "
 }
-draw_image_lock: FairLock= FairLock()
+draw_image_lock: FairLock = FairLock()
+MINI_MINOR: float = 1
 
+DISCARD_POLICY: DiscardPolicy = DiscardPolicy.DISCARDING_OLD_DATA
 
-# @synchronized(draw_image_lock)
 
 def draw_image(func_name: str, env_time: Union[int, float], called_sensor: SensorEnum):
     if len(GLOBAL_CURRENT_SENSOR_DATA) != 6:
@@ -63,7 +64,7 @@ def draw_image(func_name: str, env_time: Union[int, float], called_sensor: Senso
     fig, axs = plt.subplots(2, 3, figsize=(15, 10))
     fig.suptitle(f"time:{round(env_time, 2) if isinstance(env_time, float) else env_time} "
                  f"Sensor:{called_sensor.name} | {FUNC_NAME_OP_NAME_DICT[func_name]} ", fontsize=16)
-
+    sensor: Sensor = SENSOR_DICT[called_sensor.name]
     for index, ax in enumerate(axs.flat):
         sensor_type: SensorEnum = IMAGE_RANGE[index]
         sensor_data = GLOBAL_CURRENT_SENSOR_DATA.get(sensor_type.name, [])
@@ -83,12 +84,19 @@ def draw_image(func_name: str, env_time: Union[int, float], called_sensor: Senso
             if any(value > top or value < bottom for value in sensor_data):
                 ax.set_facecolor('#FFFF99')  # 将这个子图的背景设置为黄色
                 ax.text(0.5, 0.9, "URGENT", transform=ax.transAxes, color='red', fontsize=12, ha='center')
+            if sensor_type == called_sensor and sensor is not None and sensor.queue.is_over_flow:
+                ax.set_facecolor('#FF9999')  # 如果溢出，将这个子图的背景设置为红色
+                ax.text(0, 1, "Cache is Full", transform=ax.transAxes, color='red', fontsize=12, ha='left',
+                        verticalalignment='top')
+                print(f"Cache is Full！！！sensor:{called_sensor}")
+
         else:
             ax.text(0.5, 0.5, "No data available", transform=ax.transAxes, ha='center', va='center')
 
     plt.tight_layout()
-    plt.savefig(f'images/{time.time()}-{called_sensor.name}-{FUNC_NAME_OP_NAME_DICT[func_name]}.png')
+    plt.savefig(f'images{MINI_MINOR}-{DISCARD_POLICY.name}/{time.time()}-{called_sensor.name}-{FUNC_NAME_OP_NAME_DICT[func_name]}.png')
     plt.close(fig)
+
 
 def print_queue(func):
     """A decorator that prints the queue after the function call."""
@@ -105,7 +113,6 @@ def print_queue(func):
         sensor_type: SensorEnum = self.sensor_enum
         with draw_image_lock:
             global GLOBAL_CURRENT_SENSOR_DATA
-            print(f"typeof result:{type(display_result)}")
             print(f"result:{display_result}")
             GLOBAL_CURRENT_SENSOR_DATA[sensor_type.name] = display_result
             draw_image(func_name=method_name, env_time=simpy_time, called_sensor=sensor_type)
@@ -210,7 +217,10 @@ def _check_data_transmit(sensor_enum: SensorEnum, data: Iterable[float], cur_tim
 def stm32_controller_process(env: simpy.Environment) -> Generator[simpy.Event, None, None]:
     total_len: int = len(SCHEDULE_ORDER)
     idx = 0
+    pre_time = None
     while True:
+        if pre_time is None:
+            pre_time = env.now
         sensor_type: SensorEnum = SCHEDULE_ORDER[idx]
         sensor: Sensor = SENSOR_DICT[sensor_type.name]
         if sensor is None:
@@ -230,10 +240,25 @@ def stm32_controller_process(env: simpy.Environment) -> Generator[simpy.Event, N
             # transmit data
             total_transmit_time = _mock_data_transmit(sensor_enum=sensor_type, data=data_list, cur_time=env.now)
             yield env.timeout(total_transmit_time)
+            if sensor_type == SensorEnum.HUMIDITY or sensor_type == SensorEnum.TEMPERATURE:
+                yield env.timeout(max(0, pre_time + MINI_MINOR - env.now))
+                pre_time = None
+
+
+def process_inputs():
+    minor = input("please input the mini minor")
+    global MINI_MINOR
+    MINI_MINOR = float(minor)
+    mode = input("please input data cache mode when sensor cache is full. 1 for discarding oldest datum "
+                 "and 2 for stopping adding")
+    mode = int(mode)
+    global DISCARD_POLICY
+    DISCARD_POLICY = DiscardPolicy.get_discard_policy_by_number(mode)
 
 
 def main():
-    init_env()
+    process_inputs()
+    init_env(f'./images{MINI_MINOR}-{DISCARD_POLICY.name}')
     env = simpy.Environment()
     global ENV
     ENV = env
@@ -245,12 +270,13 @@ def main():
     })
     for sensor_enum in SensorEnum:
         tem_sensor: Sensor = Sensor(env=env, sensor_enum=sensor_enum,
-                                    discard_strategy=DiscardPolicy.DISCARDING_OLD_DATA)
+                                    discard_strategy=DISCARD_POLICY,
+                                    capability=sensor_enum.data_capacity)
         SENSOR_DICT[sensor_enum.name] = tem_sensor
         env.process(tem_sensor.generate_data())
     env.process(stm32_controller_process(env=env))
-    env.run(until=20)  # Simulate for 10 seconds
-    compositing_video_through_ffmpeg()
+    env.run(until=30)
+    compositing_video_through_ffmpeg(f'./images{MINI_MINOR}')
 
 
 def test():

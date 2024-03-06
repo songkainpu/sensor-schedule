@@ -29,7 +29,7 @@ def synchronized(lock):
 
 
 # 指定你的图片所在的目录
-images_directory = './images'
+# images_directory = './images'
 
 # 构建ffmpeg命令
 ffmpeg_command = [
@@ -43,11 +43,12 @@ ffmpeg_command = [
 ]
 
 
-def compositing_video_through_ffmpeg():
+def compositing_video_through_ffmpeg(images_directory):
     subprocess.run(ffmpeg_command, cwd=images_directory)
 
 
-def init_env():
+def init_env(images_directory):
+    ensure_directory_exists(images_directory)
     if os.path.exists(images_directory) and os.path.isdir(images_directory):
         # 列出目录中的所有文件和子目录
         for filename in os.listdir(images_directory):
@@ -60,3 +61,11 @@ def init_env():
         print("Directory cleared.")
     else:
         print("The specified path does not exist or is not a directory.")
+
+
+def ensure_directory_exists(path):
+    if not os.path.exists(path):
+        os.makedirs(path)
+        print(f"Directory {path} created.")
+    else:
+        print(f"Directory {path} already exists.")

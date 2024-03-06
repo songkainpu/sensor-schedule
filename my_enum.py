@@ -4,6 +4,7 @@ from typing import Union, Tuple, Type
 
 ERROR_RATE = 0.05
 
+
 class SensorEnum(Enum):
     # 16.436个异常中断  平均每秒产生的
     # 共占用575.26ms
@@ -45,7 +46,7 @@ class SensorEnum(Enum):
 
     def __init__(self, rate: float, error: float, range_tuple: Tuple[float, float],
                  mini_threshold: Union[int, float], max_threshold: Union[int, float], data_capacity: int,
-                 expected_cost: float, unit:str):
+                 expected_cost: float, unit: str):
         """
         :param rate: unitL Hz
         :param error:  unit 1
@@ -65,6 +66,7 @@ class SensorEnum(Enum):
         self.expected_cost = expected_cost
         self.unit = unit
 
+
 class DiscardPolicy(Enum):
     """
     Policy of discarding data when the queue cache in sensor is full
@@ -75,3 +77,10 @@ class DiscardPolicy(Enum):
 
     def __init__(self, queue_class: Type[bounded_queue.BaseThreadSafeBoundedQueue]):
         self.queue_class = queue_class
+
+    @staticmethod
+    def get_discard_policy_by_number(num: int):
+        if num == 1:
+            return DiscardPolicy.DISCARDING_OLD_DATA
+        else:
+            return DiscardPolicy.STOPPING_ADDING
