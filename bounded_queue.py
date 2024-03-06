@@ -16,6 +16,7 @@ class BaseThreadSafeBoundedQueue:
         self.back_up_queue = deque(maxlen=capacity)
         self.lock = threading.Lock()
         self.get_clear_lock = threading.Lock()
+        self.is_over_flow:bool = False
 
     def put(self, item):
         raise NotImplementedError("Must be implemented by subclass.")
@@ -36,7 +37,10 @@ class ThreadSafeBoundedQueue(BaseThreadSafeBoundedQueue):
     def put(self, item):
         with self.lock:
             if len(self.active_queue) == self.capacity:
+                self.is_over_flow = True
                 self.active_queue.popleft()
+            else:
+                self.is_over_flow = False
             self.active_queue.append(item)
 
     def get_and_clear_all(self) -> deque:
@@ -57,6 +61,10 @@ class ThreadSafeBoundedQueueNoOverflow(BaseThreadSafeBoundedQueue):
         with self.lock:
             if len(self.active_queue) < self.capacity:
                 self.active_queue.append(item)
+                self.is_over_flow = False
+            else:
+                self.is_over_flow = True
+
             # If the queue is full, do nothing.
 
     def get_and_clear_all(self) -> deque:

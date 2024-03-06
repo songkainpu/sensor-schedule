@@ -31,17 +31,17 @@ class SensorEnum(Enum):
     # Major cycle is 2 second
     #
     # range unit mg
-    ACCELEROMETER = (52, 0.05, (-2, 2), -1.9, 1.9, 52, 80.25, "ml")
+    ACCELEROMETER = (52, 0.05, (-2, 2), -1.9, 1.9, 52, 80.25, "mg")
     # range unit dps
-    GYROSCOPE = (52, 0.05, (-60, 60), -50, 50, 52, 80.25, "ml")
+    GYROSCOPE = (52, 0.05, (-60, 60), -50, 50, 52, 80.25, "dps")
     # range unit rH%
-    HUMIDITY = (1, 0.05, (30, 70), 40, 60, 2, 74.96875, "ml")
+    HUMIDITY = (1, 0.05, (30, 70), 40, 60, 2, 74.96875, "rH%")
     # range unit Celsius
-    TEMPERATURE = (1, 0.05, (15, 30), 20, 25, 2, 74.96875, "ml")
+    TEMPERATURE = (1, 0.05, (15, 30), 20, 25, 2, 74.96875, "Celsius")
     # range unit Gauss
-    MAGNETOMETER = (40, 0.05, (0, 100), 5, 95, 40, 78.75, "ml")
+    MAGNETOMETER = (40, 0.05, (0, 100), 5, 95, 40, 78.75, "Gauss")
     # range unit hPa
-    PRESSURE = (25, 0.05, (0, 100000), 5, 99995, 25, 76.84375, "ml")
+    PRESSURE = (25, 0.05, (0, 100000), 5, 99995, 25, 76.84375, "hPa")
 
     def __init__(self, rate: float, error: float, range_tuple: Tuple[float, float],
                  mini_threshold: Union[int, float], max_threshold: Union[int, float], data_capacity: int,
