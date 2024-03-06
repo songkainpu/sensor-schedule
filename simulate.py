@@ -53,41 +53,41 @@ draw_image_lock: threading.Lock = threading.Lock()
 
 
 # @synchronized(draw_image_lock)
+
 def draw_image(func_name: str, env_time: Union[int, float], called_sensor: SensorEnum):
     if len(GLOBAL_CURRENT_SENSOR_DATA) != 6:
         print(f"there is not enough sensor data to draw")
         return
-    fig, axs = plt.subplots(2, 3, figsize=(15, 10))  # 创建两行三列的子图
-    fig.suptitle(f"Sensor:{called_sensor.name} | {FUNC_NAME_OP_NAME_DICT[func_name]} ", fontsize=16)
+
+    fig, axs = plt.subplots(2, 3, figsize=(15, 10))
+    fig.suptitle(f"time:{round(env_time, 2) if isinstance(env_time, float) else env_time} "
+                 f"Sensor:{called_sensor.name} | {FUNC_NAME_OP_NAME_DICT[func_name]} ", fontsize=16)
+
     for index, ax in enumerate(axs.flat):
         sensor_type: SensorEnum = IMAGE_RANGE[index]
-        sensor_data = GLOBAL_CURRENT_SENSOR_DATA.get(sensor_type.name)
+        sensor_data = GLOBAL_CURRENT_SENSOR_DATA.get(sensor_type.name, [])
         ax.set_title(f"Sensor: {sensor_type.name}")
         ax.set_ylabel(f"Unit {sensor_type.unit}")
         max_data_points = max(len(data) for data in GLOBAL_CURRENT_SENSOR_DATA.values() if data is not None)
-        if sensor_data is None:
-            ax.text(0.5, 0.5, "No data available", transform=ax.transAxes, ha='center', va='center')
-            continue
-        print(f"sensor_data:{sensor_data}")
-        ax.plot(sensor_data, marker='o', linestyle='', markersize=8)  # 绘制传感器数据
-        ax.set_xticks(range(0, max_data_points))
-        if max_data_points == 1:
-            ax.set_xlim(-1, 1)  # 为单个数据点设置更宽的范围
+
+        if sensor_data:
+            ax.plot(sensor_data, marker='o', linestyle='', markersize=8)  # 绘制传感器数据
+            ax.set_xticks(range(0, max_data_points))
+            ax.set_xlim(-0.5, max_data_points - 0.5)
+            bottom = sensor_type.mini_threshold
+            top = sensor_type.max_threshold
+            ax.axhline(bottom, color='red', linestyle='--')
+            ax.axhline(top, color='red', linestyle='--')
+
+            if any(value > top or value < bottom for value in sensor_data):
+                ax.set_facecolor('#FFFF99')  # 将这个子图的背景设置为黄色
+                ax.text(0.5, 0.9, "URGENT", transform=ax.transAxes, color='red', fontsize=12, ha='center')
         else:
-            ax.set_xlim(-0.5, max_data_points - 0.5)  # 检查是否有超过1的数据，并相应地标记
-        bottom = sensor_type.mini_threshold
-        top = sensor_type.max_threshold
-        ax.axhline(bottom, color='red', linestyle='--')  # 添加红色水平线表示阈值
-        ax.axhline(top, color='red', linestyle='--')  # 添加红色水平线表示阈值
-        if any(value > top or value < bottom for value in sensor_data):
-            # ax.axhline(bottom, color='red', linestyle='--')  # 添加红色水平线表示阈值
-            # ax.axhline(top, color='red', linestyle='--')  # 添加红色水平线表示阈值
-            ax.text(0.5, 0.9, "URGENT", transform=ax.transAxes, color='red', fontsize=12,
-                    ha='center')
+            ax.text(0.5, 0.5, "No data available", transform=ax.transAxes, ha='center', va='center')
+
     plt.tight_layout()
     plt.savefig(f'images/{env_time}-{time.time()}-{called_sensor.name}-{FUNC_NAME_OP_NAME_DICT[func_name]}.png')
     plt.close(fig)
-
 
 def print_queue(func):
     """A decorator that prints the queue after the function call."""
