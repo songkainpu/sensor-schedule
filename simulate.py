@@ -14,6 +14,7 @@ from my_enum import SensorEnum, DiscardPolicy
 from utils import singleton_factory, compositing_video_through_ffmpeg, init_env
 import functools
 import matplotlib.pyplot as plt
+from fair_lock import FairLock
 import numpy as np
 
 # 单位 byte
@@ -49,7 +50,7 @@ FUNC_NAME_OP_NAME_DICT: Dict[str, str] = {
     "_generate_random_datum": "sensor generates data",
     "poll_data": "controller polls data "
 }
-draw_image_lock: threading.Lock = threading.Lock()
+draw_image_lock: FairLock= FairLock()
 
 
 # @synchronized(draw_image_lock)
@@ -86,7 +87,7 @@ def draw_image(func_name: str, env_time: Union[int, float], called_sensor: Senso
             ax.text(0.5, 0.5, "No data available", transform=ax.transAxes, ha='center', va='center')
 
     plt.tight_layout()
-    plt.savefig(f'images/{env_time}-{time.time()}-{called_sensor.name}-{FUNC_NAME_OP_NAME_DICT[func_name]}.png')
+    plt.savefig(f'images/{time.time()}-{called_sensor.name}-{FUNC_NAME_OP_NAME_DICT[func_name]}.png')
     plt.close(fig)
 
 def print_queue(func):
