@@ -1,8 +1,18 @@
+import threading
+
 import bounded_queue
 from enum import Enum
 from typing import Union, Tuple, Type
 
 ERROR_RATE = 0.05
+
+thread_local = threading.local()
+
+
+def get_batch_id():
+    # 获取BATCH_ID
+    return getattr(thread_local, 'BATCH_ID', None)
+
 
 
 class SensorEnum(Enum):
@@ -84,3 +94,8 @@ class DiscardPolicy(Enum):
             return DiscardPolicy.DISCARDING_OLD_DATA
         else:
             return DiscardPolicy.STOPPING_ADDING
+
+
+class EventEnum(Enum):
+    TIME_OUT = 1
+    OVER_FLOW = 2

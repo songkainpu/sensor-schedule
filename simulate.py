@@ -1,22 +1,21 @@
-import threading
+import time
+import functools
+import random
 import time
 import typing
+from datetime import datetime
+from typing import Generator, Union, List, Dict, Optional, Iterable
 
+import matplotlib.pyplot as plt
 import simpy
-import random
-
 from simpy import Resource
 
-from message_pb2 import Message
-from bounded_queue import BaseThreadSafeBoundedQueue, ThreadSafeBoundedQueue
-from typing import Tuple, Generator, Union, List, Dict, Optional, Iterable
-from my_enum import SensorEnum, DiscardPolicy
-from utils import singleton_factory, compositing_video_through_ffmpeg, init_env, ensure_directory_exists
-import functools
-import matplotlib.pyplot as plt
+from bounded_queue import BaseThreadSafeBoundedQueue
 from fair_lock import FairLock
-import numpy as np
-
+from message_pb2 import Message
+from my_enum import SensorEnum, DiscardPolicy, thread_local, EventEnum
+from utils import singleton_factory, compositing_video_through_ffmpeg, init_env
+from init_mysql import save_event ,final_save_event
 # 单位 byte
 HTTP2_FRAME_HEADER_SIZE = 9
 # 单位buye
@@ -24,12 +23,12 @@ HTTP2_HEADER_SIZE = 100
 # 256 kbs = 256/8 k·Byte·s
 BANDWIDTH: float = 256 / 8
 # the first line is the first minor cycle
-# the second is the second minor cycle
-# minor cycle is 1 second
-SCHEDULE_ORDER: List[SensorEnum] = \
-    ([SensorEnum.ACCELEROMETER, SensorEnum.GYROSCOPE, SensorEnum.MAGNETOMETER, SensorEnum.PRESSURE, SensorEnum.HUMIDITY]
-     + [SensorEnum.ACCELEROMETER, SensorEnum.GYROSCOPE, SensorEnum.MAGNETOMETER, SensorEnum.PRESSURE,
-        SensorEnum.TEMPERATURE])
+# Each substring is the tasks that should be finished in a minor cycle
+SCHEDULE_ORDER: List[List[SensorEnum]] = [
+    [SensorEnum.ACCELEROMETER, SensorEnum.GYROSCOPE, SensorEnum.MAGNETOMETER, SensorEnum.PRESSURE, SensorEnum.HUMIDITY],
+    [SensorEnum.ACCELEROMETER, SensorEnum.GYROSCOPE, SensorEnum.MAGNETOMETER, SensorEnum.PRESSURE,
+     SensorEnum.TEMPERATURE]
+]
 
 NO_SENSOR_SPIN_INTERVAL_SECONDS: float = .1
 
@@ -55,12 +54,13 @@ MINI_MINOR: float = 1
 
 DISCARD_POLICY: DiscardPolicy = DiscardPolicy.DISCARDING_OLD_DATA
 
+BATCH_ID: Optional[str] = None
+
 
 def draw_image(func_name: str, env_time: Union[int, float], called_sensor: SensorEnum):
     if len(GLOBAL_CURRENT_SENSOR_DATA) != 6:
         print(f"there is not enough sensor data to draw")
         return
-
     fig, axs = plt.subplots(2, 3, figsize=(15, 10))
     fig.suptitle(f"time:{round(env_time, 2) if isinstance(env_time, float) else env_time} "
                  f"Sensor:{called_sensor.name} | {FUNC_NAME_OP_NAME_DICT[func_name]} ", fontsize=16)
@@ -89,12 +89,14 @@ def draw_image(func_name: str, env_time: Union[int, float], called_sensor: Senso
                 ax.text(0, 1, "Cache is Full", transform=ax.transAxes, color='red', fontsize=12, ha='left',
                         verticalalignment='top')
                 print(f"Cache is Full！！！sensor:{called_sensor}")
+                save_event(event=EventEnum.OVER_FLOW, simpy_time=env_time, sensor=sensor_type)
 
         else:
             ax.text(0.5, 0.5, "No data available", transform=ax.transAxes, ha='center', va='center')
 
     plt.tight_layout()
-    plt.savefig(f'images{MINI_MINOR}-{DISCARD_POLICY.name}/{time.time()}-{called_sensor.name}-{FUNC_NAME_OP_NAME_DICT[func_name]}.png')
+    plt.savefig(
+        f'images{MINI_MINOR}-{DISCARD_POLICY.name}/{time.time()}-{called_sensor.name}-{FUNC_NAME_OP_NAME_DICT[func_name]}.png')
     plt.close(fig)
 
 
@@ -185,9 +187,9 @@ def _generate_random_data_transmit_delay() -> float:
 def _mock_data_transmit(sensor_enum: SensorEnum, data: Iterable[float], cur_time: Union[float, int]) -> float:
     random_delay: float = _generate_random_data_transmit_delay()
     my_message = Message()
-    my_message.sensor_name = sensor_enum.name
-    my_message.time = cur_time
-    my_message.data_array.extend(data)  # 添加到data_array字段
+    my_message.sensor_id = sensor_enum.name
+    my_message.timestamp = cur_time
+    my_message.sensor_data.extend(data)  # 添加到data_array字段
     serialized_data = my_message.SerializeToString()
     protobuf_size = len(serialized_data)
     transmit_time = (protobuf_size + HTTP2_HEADER_SIZE + HTTP2_HEADER_SIZE) / BANDWIDTH
@@ -217,32 +219,34 @@ def _check_data_transmit(sensor_enum: SensorEnum, data: Iterable[float], cur_tim
 def stm32_controller_process(env: simpy.Environment) -> Generator[simpy.Event, None, None]:
     total_len: int = len(SCHEDULE_ORDER)
     idx = 0
-    pre_time = None
+    pre_time: Optional[float] = None
     while True:
-        if pre_time is None:
-            pre_time = env.now
-        sensor_type: SensorEnum = SCHEDULE_ORDER[idx]
-        sensor: Sensor = SENSOR_DICT[sensor_type.name]
-        if sensor is None:
-            time.sleep(0.1)
-            continue
-        idx += 1
-        idx %= total_len
-        # poll_data
-        with STM32_CONTROLLER_RESOURCE.request() as req:
-            yield req
-            data_list: List[float] = sensor.poll_data()
-            polling_time: float = _generate_random_polling_time()
-            print(f"polling time: {polling_time}")
-            yield env.timeout(polling_time)
-            # check data
-            yield env.timeout(_check_data_transmit(sensor_enum=sensor_type, data=data_list, cur_time=env.now))
-            # transmit data
-            total_transmit_time = _mock_data_transmit(sensor_enum=sensor_type, data=data_list, cur_time=env.now)
-            yield env.timeout(total_transmit_time)
-            if sensor_type == SensorEnum.HUMIDITY or sensor_type == SensorEnum.TEMPERATURE:
-                yield env.timeout(max(0, pre_time + MINI_MINOR - env.now))
-                pre_time = None
+        pre_time = env.now
+        sensor_type_list: List[SensorEnum] = SCHEDULE_ORDER[idx]
+        for sensor_type in sensor_type_list:
+            sensor: Sensor = SENSOR_DICT[sensor_type.name]
+            if sensor is None:
+                time.sleep(0.1)
+                continue
+            idx += 1
+            idx %= total_len
+            # poll_data
+            with STM32_CONTROLLER_RESOURCE.request() as req:
+                yield req
+                data_list: List[float] = sensor.poll_data()
+                polling_time: float = _generate_random_polling_time()
+                print(f"polling time: {polling_time}")
+                yield env.timeout(polling_time)
+                # check data
+                yield env.timeout(_check_data_transmit(sensor_enum=sensor_type, data=data_list, cur_time=env.now))
+                # transmit data
+                total_transmit_time = _mock_data_transmit(sensor_enum=sensor_type, data=data_list, cur_time=env.now)
+                yield env.timeout(total_transmit_time)
+            if env.now >= pre_time + MINI_MINOR and sensor_type != SensorEnum.HUMIDITY and sensor != SensorEnum.TEMPERATURE:
+                print(f"timeout. sensor:{sensor_type}")
+                save_event(event=EventEnum.TIME_OUT, simpy_time=env.now, sensor=sensor_type)
+                break
+        yield env.timeout(max(0.0, pre_time + MINI_MINOR - env.now))
 
 
 def process_inputs():
@@ -258,6 +262,9 @@ def process_inputs():
 
 def main():
     process_inputs()
+    global BATCH_ID
+    BATCH_ID = f"{MINI_MINOR}-{DISCARD_POLICY.name}-{datetime.now()}"
+    thread_local.BATCH_ID = BATCH_ID
     init_env(f'./images{MINI_MINOR}-{DISCARD_POLICY.name}')
     env = simpy.Environment()
     global ENV
@@ -276,7 +283,8 @@ def main():
         env.process(tem_sensor.generate_data())
     env.process(stm32_controller_process(env=env))
     env.run(until=30)
-    compositing_video_through_ffmpeg(f'./images{MINI_MINOR}')
+    compositing_video_through_ffmpeg(f'./images{MINI_MINOR}-{DISCARD_POLICY.name}')
+    final_save_event()
 
 
 def test():
