@@ -1,4 +1,5 @@
 import threading
+import traceback
 from typing import Union
 
 from sqlalchemy import create_engine
@@ -18,7 +19,7 @@ logger.setLevel(logging.INFO)
 # user, password, host, dbname
 DATABASE_URI = 'mysql+pymysql://songkai:test@101.43.133.171:3307/embedded_system'
 
-engine = create_engine(url=DATABASE_URI, pool_size=5, echo=True)
+engine = create_engine(DATABASE_URI)
 
 Session = sessionmaker(bind=engine)
 
@@ -27,21 +28,28 @@ lock: threading.Lock = threading.Lock()
 
 
 def save_event(event: EventEnum, simpy_time: Union[float, int], sensor: SensorEnum):
-    with lock:
-        batch_uuid = get_batch_id()
-        ARR_CACHE.append(EventCyclicScheduler(**{
-            "batch_uuid": batch_uuid,
-            "event": event.name,
-            "simpy_time": simpy_time,
-            "sensor_name": sensor.name
-        }))
-        if len(ARR_CACHE) < 100:
-            return
-        print(f"event_tracking:{event}, simpy_time:{simpy_time}, sensor:{sensor}")
-        session: Session = Session()
-        session.add_all(ARR_CACHE)
-        session.commit()
-        session.close()
+    try:
+        with lock:
+            global ARR_CACHE
+            batch_uuid = get_batch_id()
+            ARR_CACHE.append(EventCyclicScheduler(**{
+                "batch_uuid": batch_uuid,
+                "event": event.name,
+                "simpy_time": simpy_time,
+                "sensor_name": sensor.name
+            }))
+            if len(ARR_CACHE) < 10:
+                return
+            print(f"event_tracking:{event}, simpy_time:{simpy_time}, sensor:{sensor}")
+            session: Session = Session()
+            session.add_all(ARR_CACHE)
+            session.commit()
+            session.close()
+            ARR_CACHE = []
+    except Exception as e:
+        logger.error(e)
+        traceback.print_exception(e)
+        traceback.print_stack()
 
 
 def final_save_event():

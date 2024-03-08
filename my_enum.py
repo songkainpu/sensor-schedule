@@ -14,8 +14,6 @@ def get_batch_id():
     return getattr(thread_local, 'BATCH_ID', None)
 
 
-
-class SensorEnum(Enum):
     # 16.436个异常中断  平均每秒产生的
     # 共占用575.26ms
     # 根据阻塞队列 每个设备 局部内存区满的时间都是1s
@@ -42,6 +40,8 @@ class SensorEnum(Enum):
     # Major cycle is 2 second
     #
     # range unit mg
+
+class SensorEnum(Enum):
     ACCELEROMETER = (52, 0.05, (-2, 2), -1.9, 1.9, 52, 80.25, "mg")
     # range unit dps
     GYROSCOPE = (52, 0.05, (-60, 60), -50, 50, 52, 80.25, "dps")

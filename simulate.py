@@ -17,9 +17,9 @@ from my_enum import SensorEnum, DiscardPolicy, thread_local, EventEnum
 from utils import singleton_factory, compositing_video_through_ffmpeg, init_env
 from init_mysql import save_event ,final_save_event
 # 单位 byte
-HTTP2_FRAME_HEADER_SIZE = 9
+HTTP3_FRAME_HEADER_SIZE = 9
 # 单位buye
-HTTP2_HEADER_SIZE = 100
+HTTP3_HEADER_SIZE = 100
 # 256 kbs = 256/8 k·Byte·s
 BANDWIDTH: float = 256 / 8
 # the first line is the first minor cycle
@@ -189,10 +189,10 @@ def _mock_data_transmit(sensor_enum: SensorEnum, data: Iterable[float], cur_time
     my_message = Message()
     my_message.sensor_id = sensor_enum.name
     my_message.timestamp = cur_time
-    my_message.sensor_data.extend(data)  # 添加到data_array字段
+    my_message.sensor_data.extend(data)
     serialized_data = my_message.SerializeToString()
     protobuf_size = len(serialized_data)
-    transmit_time = (protobuf_size + HTTP2_HEADER_SIZE + HTTP2_HEADER_SIZE) / BANDWIDTH
+    transmit_time = (protobuf_size + HTTP3_FRAME_HEADER_SIZE + HTTP3_HEADER_SIZE) / BANDWIDTH
     total_transmit_time: float = transmit_time + random_delay
     print(f"total_transmit_time:{total_transmit_time}")
     return total_transmit_time / 1000

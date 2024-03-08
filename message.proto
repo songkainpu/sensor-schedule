@@ -3,5 +3,6 @@ syntax = "proto3";
 message Message {
   string sensor_id = 1;
   float timestamp = 2;
+  // buf:lint:ignore FIELD_SAME_JSON_NAME
   repeated float sensor_data = 3;
 }

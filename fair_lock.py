@@ -26,7 +26,7 @@ class FairLock:
     # Context manager methods
     def __enter__(self):
         self.acquire()
-        return self  # 返回实例本身，如果需要的话
+        return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.release()
