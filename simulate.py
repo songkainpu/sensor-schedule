@@ -116,6 +116,8 @@ def print_queue(func):
         with draw_image_lock:
             global GLOBAL_CURRENT_SENSOR_DATA
             print(f"result:{display_result}")
+            if method_name == "poll_data":
+                display_result = []
             GLOBAL_CURRENT_SENSOR_DATA[sensor_type.name] = display_result
             draw_image(func_name=method_name, env_time=simpy_time, called_sensor=sensor_type)
         return result
@@ -283,8 +285,8 @@ def main():
         env.process(tem_sensor.generate_data())
     env.process(stm32_controller_process(env=env))
     env.run(until=30)
-    compositing_video_through_ffmpeg(f'./images{MINI_MINOR}-{DISCARD_POLICY.name}')
     final_save_event()
+    compositing_video_through_ffmpeg(f'./images{MINI_MINOR}-{DISCARD_POLICY.name}')
 
 
 def test():
