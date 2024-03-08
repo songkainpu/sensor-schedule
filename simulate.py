@@ -252,7 +252,7 @@ def stm32_controller_process(env: simpy.Environment) -> Generator[simpy.Event, N
 
 
 def process_inputs():
-    minor = input("please input the mini minor")
+    minor = input("please input the minor cycle ")
     global MINI_MINOR
     MINI_MINOR = float(minor)
     mode = input("please input data cache mode when sensor cache is full. 1 for discarding oldest datum "
@@ -287,29 +287,6 @@ def main():
     env.run(until=30)
     final_save_event()
     compositing_video_through_ffmpeg(f'./images{MINI_MINOR}-{DISCARD_POLICY.name}')
-
-
-def test():
-    my_queue: typing.List[float] = [float(i) for i in range(25)]
-    my_message = Message()
-    my_message.sensor_name = "test"
-    my_message.time = 99
-    my_message.data_array.extend(my_queue)  # 添加到data_array字段
-    serialized_data = my_message.SerializeToString()
-    protobuf_size = len(serialized_data)
-    print("52 Protobuf Size:", protobuf_size, "byte")
-    my_queue: typing.List[float] = [1, 2]
-    my_message2 = Message()
-    my_message2.sensor_name = "test"
-    my_message2.time = 99
-    my_message2.data_array.extend(my_queue)  # 添加到data_array字段
-    serialized_data = my_message2.SerializeToString()
-    protobuf_size = len(serialized_data)
-    print("1 Protobuf Size:", protobuf_size, "byte")
-    # env = simpy.Environment()
-    # for sensor in SensorEnum:
-    #     env.process(sensor_data_generator(env, sensor))
-    # env.run(until=10)  # Simulate for 10 seconds
 
 
 if __name__ == "__main__":
